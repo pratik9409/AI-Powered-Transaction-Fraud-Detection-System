@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fraud Detection Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vis-network@9.1.2/dist/vis-network.min.js"></script>
+    <style>
+        :root {
+            --sidebar-width: 280px;
+            --risk-high: #dc3545;
+            --risk-medium: #ffc107;
+            --risk-low: #28a745;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow-x: hidden;
+        }
+        
+        .card {
+            margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+            border: none;
+            border-radius: 10px;
+            transition: transform 0.2s;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        
+        .risk-high {
+            border-left: 4px solid var(--risk-high);
+        }
+        
+        .risk-medium {
+            border-left: 4px solid var(--risk-medium);
+        }
+        
+        .risk-low {
+            border-left: 4px solid var(--risk-low);
+        }
+        
+        .sidebar {
+            background-color: #2c3e50;
+            color: white;
+            height: 100vh;
+            position: fixed;
+            width: var(--sidebar-width);
+            padding: 20px 0;
+            overflow-y: auto;
+        }
+        
+        .main-content {
+            margin-left: var(--sidebar-width);
+            padding: 20px;
+            background-color: #f8f9fa;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+        
+        .nav-link {
+            color: rgba(255,255,255,0.8);
+            padding: 12px 20px;
+            margin: 5px 10px;
+            border-radius: 5px;
+            transition: all 0.3s;
+        }
+        
+        .nav-link:hover, .nav-link.active {
+            background-color: #34495e;
+            color: white;
+        }
+        
+        .nav-link i {
+            width: 24px;
+            text-align: center;
+        }
+        
+        .badge-risk {
+            padding: 5px 8px;
+            border-radius: 12px;
+            font-weight: 500;
+        }
+        
+        #network-graph {
+            width: 100%;
+            height: 300px;
+            border: 1px solid #eee;
+            border-radius: 8px;
+            background-color: white;
+        }
+        
+        .model-status {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+        
+        .status-active {
+            background-color: #28a745;
+        }
+        
+        .status-warning {
+            background-color: #ffc107;
+        }
+        
+        .status-danger {
+            background-color: #dc3545;
+        }
+        
+        .feature-impact {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        
+        .feature-bar {
+            height: 8px;
+            margin-left: 10px;
+            border-radius: 4px;
+        }
+        
+        .impact-positive {
+            background-color: #dc3545;
+        }
+        
+        .impact-negative {
+            background-color: #28a745;
+        }
+        
+        .drift-alert {
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(220,53,69,0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(220,53,69,0); }
+            100% { box-shadow: 0 0 0 0 rgba(220,53,69,0); }
+        }
+
+        /* Fix for the scrolling issue */
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
+        
+        .container-fluid {
+            padding-right: 15px;
+            padding-left: 15px;
+        }
+        
+        .table-responsive {
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="text-center mb-4 p-3">
+            <h3><i class="bi bi-shield-lock me-2"></i>Fraud Detection</h3>
+            <small class="text-muted">Real-time Monitoring System</small>
+        </div>
+        <ul class="nav flex-column">
+            <li class="nav-item">
+                <a class="nav-link active" href="#"><i class="bi bi-speedometer2"></i> Dashboard</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#" id="alerts-link"><i class="bi bi-flag"></i> Alerts <span class="badge bg-danger float-end" id="alerts-count">0</span></a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#"><i class="bi bi-people"></i> Customers</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#"><i class="bi bi-file-earmark-text"></i> Reports</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#"><i class="bi bi-graph-up"></i> Analytics</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#"><i class="bi bi-gear"></i> Settings</a>
+            </li>
+        </ul>
+        
+        <div class="p-3 mt-auto">
+            <div class="card bg-dark text-white">
+                <div class="card-body p-3">
+                    <h6 class="card-title">System Status</h6>
+                    <div class="model-status">
+                        <span class="status-indicator status-active"></span>
+                        <span>XGBoost Model</span>
+                    </div>
+                    <div class="model-status">
+                        <span class="status-indicator status-active"></span>
+                        <span>Isolation Forest</span>
+                    </div>
+                    <div class="model-status">
+                        <span class="status-indicator status-active"></span>
+                        <span>GNN Network</span>
+                    </div>
+                    <div class="model-status" id="drift-status">
+                        <span class="status-indicator status-active"></span>
+                        <span>Concept Drift</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="container-fluid">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2 class="mb-0">Transaction Monitoring Dashboard</h2>
+                <div class="dropdown">
+                    <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="timeRangeDropdown" data-bs-toggle="dropdown">
+                        <i class="bi bi-calendar-week"></i> Last 24 Hours
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#">Last 24 Hours</a></li>
+                        <li><a class="dropdown-item" href="#">Last 7 Days</a></li>
+                        <li><a class="dropdown-item" href="#">Last 30 Days</a></li>
+                        <li><a class="dropdown-item" href="#">Custom Range</a></li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h5 class="card-title text-muted">Total Transactions</h5>
+                            <h2 class="card-text" id="total-transactions">0</h2>
+                            <small class="text-success"><i class="bi bi-arrow-up"></i> 12% from yesterday</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h5 class="card-title text-muted">Flagged Transactions</h5>
+                            <h2 class="card-text" id="flagged-transactions">0</h2>
+                            <small class="text-danger"><i class="bi bi-arrow-up"></i> 8% from yesterday</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h5 class="card-title text-muted">High Risk</h5>
+                            <h2 class="card-text" id="high-risk">0</h2>
+                            <small class="text-danger"><i class="bi bi-exclamation-triangle"></i> Needs review</small>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h5 class="card-title text-muted">Avg Risk Score</h5>
+                            <h2 class="card-text" id="avg-risk">0</h2>
+                            <small id="risk-trend" class="text-success"><i class="bi bi-arrow-down"></i> 5% from yesterday</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mt-4">
+                <div class="col-md-8">
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h5 class="card-title mb-0">Recent Transactions</h5>
+                                <div>
+                                    <button class="btn btn-sm btn-outline-primary me-2" id="refresh-btn">
+                                        <i class="bi bi-arrow-clockwise"></i> Refresh
+                                    </button>
+                                    <button class="btn btn-sm btn-primary" id="generate-report-btn">
+                                        <i class="bi bi-file-earmark-pdf"></i> Generate Report
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="table-responsive">
+                                <table class="table table-hover">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>ID</th>
+                                            <th>Account</th>
+                                            <th>Amount</th>
+                                            <th>Type</th>
+                                            <th>Location</th>
+                                            <th>Risk Score</th>
+                                            <th>Status</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="transactions-table">
+                                        <!-- Filled by JavaScript -->
+                                    </tbody>
+                                </table>
+                            </div>
+                            <nav>
+                                <ul class="pagination justify-content-center mt-3">
+                                    <li class="page-item disabled">
+                                        <a class="page-link" href="#">Previous</a>
+                                    </li>
+                                    <li class="page-item active"><a class="page-link" href="#">1</a></li>
+                                    <li class="page-item"><a class="page-link" href="#">2</a></li>
+                                    <li class="page-item"><a class="page-link" href="#">3</a></li>
+                                    <li class="page-item">
+                                        <a class="page-link" href="#">Next</a>
+                                    </li>
+                                </ul>
+                            </nav>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-4">
+                    <div class="card" style="height: 300px; overflow: hidden;">
+                        <div class="card-body d-flex flex-column">
+                            <h5 class="card-title">Risk Distribution</h5>
+                            <div class="flex-grow-1" style="position: relative;">
+                                <canvas id="riskChart" style="max-height: 100%; width: 100%;"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                    
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Transaction Analysis</h5>
+                            <form id="transaction-form">
+                                <div class="mb-3">
+                                    <label class="form-label">Account ID</label>
+                                    <input type="text" class="form-control" id="account-id" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Transaction Amount ($)</label>
+                                    <input type="number" step="0.01" class="form-control" id="amount" required>
+                                </div>
+                                <div class="row">
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Type</label>
+                                        <select class="form-select" id="type">
+                                            <option value="Debit">Debit</option>
+                                            <option value="Credit">Credit</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-6 mb-3">
+                                        <label class="form-label">Channel</label>
+                                        <select class="form-select" id="channel">
+                                            <option value="Online">Online</option>
+                                            <option value="ATM">ATM</option>
+                                            <option value="Branch">Branch</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">Location</label>
+                                    <input type="text" class="form-control" id="location" value="New York">
+                                </div>
+                                <button type="submit" class="btn btn-primary w-100">
+                                    <i class="bi bi-shield-check"></i> Analyze Transaction
+                                </button>
+                            </form>
+                            <div id="analysis-result" class="mt-3"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="card">
+                        <div class="card-body">
+                            <h5 class="card-title">Transaction Network</h5>
+                            <div id="network-graph"></div>
+                            <div class="mt-2 d-flex justify-content-between">
+                                <span class="badge bg-primary">Account</span>
+                                <span class="badge bg-success">Merchant</span>
+                                <span class="badge bg-warning">Device</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="row mt-4">
+                <div class="col-md-6">
+                    <div class="card" style="height: 300px; overflow: hidden;">
+                        <div class="card-body d-flex flex-column">
+                            <h5 class="card-title">Risk Over Time</h5>
+                            <div class="flex-grow-1" style="position: relative;">
+                                <canvas id="riskTrendChart" style="max-height: 100%; width: 100%;"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+                <div class="col-md-6">
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <h5 class="card-title mb-0">Top Risk Indicators</h5>
+                                <small class="text-muted">Last 30 days</small>
+                            </div>
+                            <div id="risk-factors" class="mt-3">
+                                <!-- Filled by JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Transaction Detail Modal -->
+    <div class="modal fade" id="transactionModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">Transaction Details</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="transaction-detail">
+                    <!-- Filled by JavaScript -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary">Generate SAR</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Global variables
+        let riskChart, riskTrendChart, network;
+        const modal = new bootstrap.Modal('#transactionModal');
+        
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', function() {
+            loadTransactionData();
+            setupEventListeners();
+            checkDriftStatus();
+            
+            // Sample network data
+            initNetworkGraph();
+        });
+        
+        function loadTransactionData() {
+            // Simulate API call with sample data
+            const sampleData = [
+                {
+                    TransactionID: "TX1001",
+                    AccountID: "AC00128",
+                    TransactionAmount: 125.50,
+                    TransactionType: "Debit",
+                    Location: "New York, NY",
+                    RiskScore: 0.85,
+                    Status: "Flagged",
+                    TransactionDate: "2023-01-15 14:30:22"
+                },
+                {
+                    TransactionID: "TX1002",
+                    AccountID: "AC00245",
+                    TransactionAmount: 89.99,
+                    TransactionType: "Debit",
+                    Location: "San Francisco, CA",
+                    RiskScore: 0.42,
+                    Status: "Cleared",
+                    TransactionDate: "2023-01-15 12:15:10"
+                },
+                {
+                    TransactionID: "TX1003",
+                    AccountID: "AC00376",
+                    TransactionAmount: 1200.00,
+                    TransactionType: "Credit",
+                    Location: "Miami, FL",
+                    RiskScore: 0.68,
+                    Status: "Pending Review",
+                    TransactionDate: "2023-01-15 09:45:33"
+                },
+                {
+                    TransactionID: "TX1004",
+                    AccountID: "AC00128",
+                    TransactionAmount: 45.60,
+                    TransactionType: "Debit",
+                    Location: "Chicago, IL",
+                    RiskScore: 0.91,
+                    Status: "Flagged",
+                    TransactionDate: "2023-01-14 17:22:45"
+                },
+                {
+                    TransactionID: "TX1005",
+                    AccountID: "AC00492",
+                    TransactionAmount: 230.75,
+                    TransactionType: "Debit",
+                    Location: "New York, NY",
+                    RiskScore: 0.35,
+                    Status: "Cleared",
+                    TransactionDate: "2023-01-14 15:10:18"
+                }
+            ];
+            
+            updateMetrics(sampleData);
+            populateTransactionsTable(sampleData);
+            initRiskChart(sampleData);
+            initRiskTrendChart();
+            updateRiskFactors();
+        }
+        
+        function updateMetrics(data) {
+            document.getElementById('total-transactions').textContent = data.length;
+            const flagged = data.filter(t => t.Status === 'Flagged').length;
+            document.getElementById('flagged-transactions').textContent = flagged;
+            document.getElementById('high-risk').textContent = data.filter(t => t.RiskScore > 0.7).length;
+            
+            const avgRisk = (data.reduce((sum, t) => sum + t.RiskScore, 0) / data.length).toFixed(2);
+            document.getElementById('avg-risk').textContent = avgRisk;
+            
+            // Update risk trend indicator
+            const trendElem = document.getElementById('risk-trend');
+            if (avgRisk > 0.5) {
+                trendElem.className = 'text-danger';
+                trendElem.innerHTML = '<i class="bi bi-arrow-up"></i> ' + (avgRisk * 10) + '% from yesterday';
+            } else {
+                trendElem.className = 'text-success';
+                trendElem.innerHTML = '<i class="bi bi-arrow-down"></i> ' + ((1 - avgRisk) * 10) + '% from yesterday';
+            }
+            
+            // Update alerts count
+            document.getElementById('alerts-count').textContent = flagged;
+        }
+        
+        function populateTransactionsTable(data) {
+            const tableBody = document.getElementById('transactions-table');
+            tableBody.innerHTML = '';
+            
+            data.forEach(transaction => {
+                const row = document.createElement('tr');
+                row.style.cursor = 'pointer';
+                row.addEventListener('click', () => showTransactionDetail(transaction));
+                
+                if (transaction.RiskScore > 0.7) {
+                    row.classList.add('risk-high');
+                } else if (transaction.RiskScore > 0.4) {
+                    row.classList.add('risk-medium');
+                } else {
+                    row.classList.add('risk-low');
+                }
+                
+                let riskBadgeClass = 'bg-success';
+                if (transaction.RiskScore > 0.7) riskBadgeClass = 'bg-danger';
+                else if (transaction.RiskScore > 0.4) riskBadgeClass = 'bg-warning';
+                
+                row.innerHTML = `
+                    <td>${transaction.TransactionID}</td>
+                    <td>
+                        ${transaction.AccountID}
+                        ${transaction.RiskScore > 0.7 ? '<i class="bi bi-exclamation-triangle-fill text-danger ms-1"></i>' : ''}
+                    </td>
+                    <td>$${transaction.TransactionAmount.toFixed(2)}</td>
+                    <td>${transaction.TransactionType}</td>
+                    <td>${transaction.Location}</td>
+                    <td>
+                        <span class="badge ${riskBadgeClass}">${transaction.RiskScore.toFixed(2)}</span>
+                    </td>
+                    <td>${transaction.Status}</td>
+                    <td>
+                        <button class="btn btn-sm btn-outline-primary" onclick="event.stopPropagation(); showTransactionDetail(${JSON.stringify(transaction)})">
+                            <i class="bi bi-search"></i> Details
+                        </button>
+                    </td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+        
+        function initRiskChart(data) {
+            const ctx = document.getElementById('riskChart').getContext('2d');
+            riskChart = new Chart(ctx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Low Risk', 'Medium Risk', 'High Risk'],
+                    datasets: [{
+                        data: [
+                            data.filter(t => t.RiskScore <= 0.4).length,
+                            data.filter(t => t.RiskScore > 0.4 && t.RiskScore <= 0.7).length,
+                            data.filter(t => t.RiskScore > 0.7).length
+                        ],
+                        backgroundColor: [
+                            '#28a745',
+                            '#ffc107',
+                            '#dc3545'
+                        ],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            position: 'bottom',
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.raw || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = Math.round((value / total) * 100);
+                                    return `${label}: ${value} (${percentage}%)`;
+                                }
+                            }
+                        }
+                    },
+                    cutout: '70%'
+                }
+            });
+        }
+        
+        function initRiskTrendChart() {
+            const ctx = document.getElementById('riskTrendChart').getContext('2d');
+            riskTrendChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: Array.from({length: 30}, (_, i) => `${i+1} Jan`),
+                    datasets: [{
+                        label: 'Average Risk Score',
+                        data: Array.from({length: 30}, () => Math.random() * 0.8 + 0.1),
+                        borderColor: '#dc3545',
+                        backgroundColor: 'rgba(220, 53, 69, 0.1)',
+                        tension: 0.3,
+                        fill: true
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            max: 1.0
+                        }
+                    }
+                }
+            });
+        }
+        
+        function initNetworkGraph() {
+            const container = document.getElementById('network-graph');
+            
+            // Sample data
+            const nodes = new vis.DataSet([
+                {id: 1, label: 'AC00128', group: 'account', title: 'Customer: John Doe'},
+                {id: 2, label: 'M001', group: 'merchant', title: 'Merchant: Amazon'},
+                {id: 3, label: 'D001', group: 'device', title: 'Device: iPhone 12'},
+                {id: 4, label: 'AC00245', group: 'account', title: 'Customer: Jane Smith'},
+                {id: 5, label: 'M002', group: 'merchant', title: 'Merchant: Walmart'}
+            ]);
+            
+            const edges = new vis.DataSet([
+                {from: 1, to: 2, label: '$125.00', title: '2023-01-15 14:30'},
+                {from: 1, to: 3, label: 'Login', title: '2023-01-15 14:28'},
+                {from: 4, to: 2, label: '$89.99', title: '2023-01-14 09:15'},
+                {from: 4, to: 5, label: '$45.60', title: '2023-01-13 17:45'}
+            ]);
+            
+            const data = { nodes, edges };
+            const options = {
+                nodes: {
+                    shape: 'dot',
+                    size: 16,
+                    font: {
+                        size: 12,
+                        color: '#343a40'
+                    }
+                },
+                edges: {
+                    width: 1,
+                    smooth: {
+                        type: 'continuous'
+                    },
+                    arrows: {
+                        to: {
+                            enabled: true,
+                            scaleFactor: 0.5
+                        }
+                    },
+                    font: {
+                        size: 10,
+                        align: 'middle'
+                    }
+                },
+                groups: {
+                    account: {
+                        color: '#007bff',
+                        shape: 'ellipse'
+                    },
+                    merchant: {
+                        color: '#28a745',
+                        shape: 'box'
+                    },
+                    device: {
+                        color: '#ffc107',
+                        shape: 'diamond'
+                    }
+                },
+                physics: {
+                    stabilization: {
+                        fit: true
+                    },
+                    barnesHut: {
+                        springLength: 100
+                    }
+                },
+                interaction: {
+                    tooltipDelay: 200,
+                    hideEdgesOnDrag: true
+                }
+            };
+            
+            network = new vis.Network(container, data, options);
+        }
+        
+        function updateRiskFactors() {
+            const factors = [
+                {name: 'Unusual Location', impact: 0.85, change: 12},
+                {name: 'High Amount Deviation', impact: 0.78, change: 8},
+                {name: 'Rapid Succession', impact: 0.65, change: -5},
+                {name: 'New Device', impact: 0.59, change: 15},
+                {name: 'Unusual Time', impact: 0.52, change: 3}
+            ];
+            
+            const container = document.getElementById('risk-factors');
+            container.innerHTML = '';
+            
+            factors.forEach(factor => {
+                const factorElem = document.createElement('div');
+                factorElem.className = 'mb-3';
+                
+                const progress = Math.min(100, Math.round(factor.impact * 100));
+                const changeClass = factor.change > 0 ? 'text-danger' : 'text-success';
+                const changeIcon = factor.change > 0 ? 'bi-arrow-up' : 'bi-arrow-down';
+                
+                factorElem.innerHTML = `
+                    <div class="d-flex justify-content-between mb-1">
+                        <span>${factor.name}</span>
+                        <small class="${changeClass}">
+                            <i class="bi ${changeIcon}"></i> ${Math.abs(factor.change)}%
+                        </small>
+                    </div>
+                    <div class="progress" style="height: 6px;">
+                        <div class="progress-bar bg-danger" role="progressbar" 
+                             style="width: ${progress}%" aria-valuenow="${progress}">
+                        </div>
+                    </div>
+                `;
+                
+                container.appendChild(factorElem);
+            });
+        }
+        
+        function showTransactionDetail(transaction) {
+            const detailContainer = document.getElementById('transaction-detail');
+            
+            let riskBadgeClass = 'bg-success';
+            if (transaction.RiskScore > 0.7) riskBadgeClass = 'bg-danger';
+            else if (transaction.RiskScore > 0.4) riskBadgeClass = 'bg-warning';
+            
+            detailContainer.innerHTML = `
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Transaction Details</h6>
+                        <table class="table table-sm">
+                            <tr>
+                                <th>ID:</th>
+                                <td>${transaction.TransactionID}</td>
+                            </tr>
+                            <tr>
+                                <th>Account:</th>
+                                <td>${transaction.AccountID}</td>
+                            </tr>
+                            <tr>
+                                <th>Amount:</th>
+                                <td>$${transaction.TransactionAmount.toFixed(2)}</td>
+                            </tr>
+                            <tr>
+                                <th>Type:</th>
+                                <td>${transaction.TransactionType}</td>
+                            </tr>
+                        </table>
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Risk Analysis</h6>
+                        <table class="table table-sm">
+                            <tr>
+                                <th>Risk Score:</th>
+                                <td><span class="badge ${riskBadgeClass}">${transaction.RiskScore.toFixed(2)}</span></td>
+                            </tr>
+                            <tr>
+                                <th>Status:</th>
+                                <td>${transaction.Status}</td>
+                            </tr>
+                            <tr>
+                                <th>Location:</th>
+                                <td>${transaction.Location}</td>
+                            </tr>
+                            <tr>
+                                <th>Date:</th>
+                                <td>${transaction.TransactionDate}</td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <h6>Key Risk Indicators</h6>
+                    <div class="feature-impact">
+                        <span>Unusual Location</span>
+                        <div class="feature-bar impact-positive" style="width: 80%"></div>
+                    </div>
+                    <div class="feature-impact">
+                        <span>Amount Deviation</span>
+                        <div class="feature-bar impact-positive" style="width: 65%"></div>
+                    </div>
+                    <div class="feature-impact">
+                        <span>Time of Day</span>
+                        <div class="feature-bar impact-negative" style="width: 30%"></div>
+                    </div>
+                </div>
+            `;
+            
+            modal.show();
+        }
+        
+        function checkDriftStatus() {
+            // Simulate API call
+            setTimeout(() => {
+                const driftStatus = document.getElementById('drift-status');
+                if (Math.random() > 0.7) {
+                    driftStatus.innerHTML = `
+                        <span class="status-indicator status-danger"></span>
+                        <span>Concept Drift <span class="badge bg-danger">Detected</span></span>
+                    `;
+                    document.getElementById('alerts-link').classList.add('drift-alert');
+                } else {
+                    driftStatus.innerHTML = `
+                        <span class="status-indicator status-active"></span>
+                        <span>Concept Drift</span>
+                    `;
+                }
+            }, 1000);
+        }
+        
+        function setupEventListeners() {
+            // Transaction analysis form
+            document.getElementById('transaction-form').addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const transactionData = {
+                    AccountID: document.getElementById('account-id').value,
+                    TransactionAmount: document.getElementById('amount').value,
+                    TransactionType: document.getElementById('type').value,
+                    Channel: document.getElementById('channel').value,
+                    Location: document.getElementById('location').value,
+                    TransactionDuration: Math.floor(Math.random() * 120) + 10,
+                    LoginAttempts: Math.floor(Math.random() * 3) + 1,
+                    AccountBalance: (Math.random() * 10000).toFixed(2),
+                    PreviousTransactionDate: new Date(Date.now() - Math.floor(Math.random() * 48) * 60 * 60 * 1000).toISOString(),
+                    DeviceID: 'D' + Math.floor(Math.random() * 1000).toString().padStart(3, '0'),
+                    MerchantID: 'M' + Math.floor(Math.random() * 100).toString().padStart(2, '0'),
+                    CustomerOccupation: ['Student', 'Doctor', 'Engineer', 'Retired'][Math.floor(Math.random() * 4)]
+                };
+                
+                // Simulate API response
+                setTimeout(() => {
+                    const compositeScore = Math.min(0.99, Math.max(0.1, 
+                        (transactionData.TransactionAmount > 1000 ? 0.4 : 0) + 
+                        (transactionData.Channel === 'Online' ? 0.2 : 0) + 
+                        (Math.random() * 0.4)
+                    ));
+                    
+                    const analysisResult = {
+                        composite_score: compositeScore,
+                        customer_risk_score: (compositeScore * 0.8 + Math.random() * 0.2).toFixed(2),
+                        isolation_forest_score: (compositeScore * 0.9 + Math.random() * 0.1).toFixed(2),
+                        xgboost_probability: (compositeScore * 1.1).toFixed(2),
+                        gnn_probability: (compositeScore * 0.95).toFixed(2),
+                        explanation: [
+                            {feature: 'Amount', shap_value: transactionData.TransactionAmount > 1000 ? 0.35 : 0.15, value: transactionData.TransactionAmount},
+                            {feature: 'Location', shap_value: 0.25, value: transactionData.Location},
+                            {feature: 'Channel', shap_value: transactionData.Channel === 'Online' ? 0.2 : 0.05, value: transactionData.Channel},
+                            {feature: 'Time Since Last TX', shap_value: 0.15, value: (Math.random() * 24).toFixed(1) + 'h'},
+                            {feature: 'Occupation', shap_value: 0.1, value: transactionData.CustomerOccupation}
+                        ]
+                    };
+                    
+                    const resultDiv = document.getElementById('analysis-result');
+                    let riskLevel = 'Low';
+                    let alertClass = 'alert-success';
+                    
+                    if (analysisResult.composite_score > 0.7) {
+                        riskLevel = 'High';
+                        alertClass = 'alert-danger';
+                    } else if (analysisResult.composite_score > 0.4) {
+                        riskLevel = 'Medium';
+                        alertClass = 'alert-warning';
+                    }
+                    
+                    // Create feature impact visualization
+                    let explanationHTML = `
+                        <div class="alert ${alertClass}">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <h4 class="mb-0">Risk Assessment: ${riskLevel}</h4>
+                                <span class="badge bg-${riskLevel === 'High' ? 'danger' : riskLevel === 'Medium' ? 'warning' : 'success'}">
+                                    ${analysisResult.composite_score.toFixed(2)}
+                                </span>
+                            </div>
+                            <hr>
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <p><strong>Customer Risk:</strong> ${analysisResult.customer_risk_score}</p>
+                                    <p><strong>Isolation Forest:</strong> ${analysisResult.isolation_forest_score}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p><strong>XGBoost:</strong> ${analysisResult.xgboost_probability}</p>
+                                    <p><strong>GNN Network:</strong> ${analysisResult.gnn_probability}</p>
+                                </div>
+                            </div
+                        </div>
+                        <h5 class="mt-3">Key Risk Factors</h5>
+                    `;
+                    
+                    data.explanation.forEach(factor => {
+                        const impactWidth = Math.min(100, Math.abs(factor.shap_value) * 100);
+                        const impactClass = factor.shap_value > 0 ? 'impact-positive' : 'impact-negative';
+                        
+                        explanationHTML += `
+                            <div class="feature-impact">
+                                <span>${factor.feature}</span>
+                                <div class="feature-bar ${impactClass}" style="width: ${impactWidth}%"></div>
+                                <small class="text-muted ms-2">${factor.value.toFixed(2)}</small>
+                            </div>
+                        `;
+                    });
+                    
+                    resultDiv.innerHTML = explanationHTML;
+                    
+                    // Update network graph with new transaction
+                    updateNetworkGraph(transactionData.AccountID, transactionData.MerchantID, transactionData.DeviceID, transactionData.TransactionAmount);
+                    
+                    // Refresh transaction data
+                    if (data.composite_score > 0.5) {
+                        loadTransactionData();
+                    }
+                });
+            });
+            
+            // Refresh button
+            document.getElementById('refresh-btn').addEventListener('click', function(e) {
+                e.preventDefault();
+                loadTransactionData();
+            });
+            
+            // Generate report button
+            document.getElementById('generate-report-btn').addEventListener('click', function(e) {
+                e.preventDefault();
+                fetch('/api/transactions')
+                    .then(response => response.json())
+                    .then(data => {
+                        const reportData = {
+                            transactions: data.filter(t => t.RiskScore > 0.5),
+                            customer_info: {
+                                name: "Sample Customer",
+                                account_id: "AC00128",
+                                risk_score: 0.72
+                            }
+                        };
+                        
+                        fetch('/api/reports/sar', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(reportData)
+                        })
+                        .then(response => response.blob())
+                        .then(blob => {
+                            const url = window.URL.createObjectURL(blob);
+                            const a = document.createElement('a');
+                            a.href = url;
+                            a.download = `SAR_Report_${new Date().toISOString().split('T')[0]}.pdf`;
+                            document.body.appendChild(a);
+                            a.click();
+                            window.URL.revokeObjectURL(url);
+                        });
+                    });
+            });
+        }
+        
+        function updateNetworkGraph(accountId, merchantId, deviceId, amount) {
+            // In a real implementation, you would update the graph with new nodes and edges
+            // This is a simplified version for demonstration
+            
+            const nodes = network.body.data.nodes;
+            const edges = network.body.data.edges;
+            
+            // Check if account node exists
+            let accountNode = nodes.get().find(n => n.label === accountId);
+            if (!accountNode) {
+                nodes.add({
+                    id: nodes.length + 1,
+                    label: accountId,
+                    group: 'account'
+                });
+                accountNode = nodes.get().find(n => n.label === accountId);
+            }
+            
+            // Check if merchant node exists
+            let merchantNode = nodes.get().find(n => n.label === merchantId);
+            if (!merchantNode) {
+                nodes.add({
+                    id: nodes.length + 1,
+                    label: merchantId,
+                    group: 'merchant'
+                });
+                merchantNode = nodes.get().find(n => n.label === merchantId);
+            }
+            
+            // Check if device node exists
+            let deviceNode = nodes.get().find(n => n.label === deviceId);
+            if (!deviceNode) {
+                nodes.add({
+                    id: nodes.length + 1,
+                    label: deviceId,
+                    group: 'device'
+                });
+                deviceNode = nodes.get().find(n => n.label === deviceId);
+            }
+
+            // Add new edges
+            edges.add({
+                from: accountNode.id,
+                to: merchantNode.id,
+                label: `$${parseFloat(amount).toFixed(2)}`,
+                title: new Date().toLocaleString()
+            });
+
+            edges.add({
+                from: accountNode.id,
+                to: deviceNode.id,
+                label: 'Login',
+                title: new Date().toLocaleString()
+            });
+
+            // Refresh the network visualization
+            network.fit({
+                nodes: [accountNode.id, merchantNode.id, deviceNode.id],
+                animation: true
+            });
+        }
+    </script>
+</body>
+</html>
